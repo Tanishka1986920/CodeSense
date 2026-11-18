@@ -1,0 +1,16 @@
+﻿# Local/server runtime data (contains user accounts & profile history)
+data/db.json
+data/*.json
+
+# OS/editor
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+
+# Logs
+*.log
+npm-debug.log*
+
+# Node
+node_modules/

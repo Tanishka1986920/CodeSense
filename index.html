@@ -1,0 +1,321 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>CodeSense — Code Quality & Complexity Analyzer</title>
+  <meta name="description" content="Analyze code for errors, complexity, and readability with CodeSense.">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+  <div class="aurora" aria-hidden="true">
+    <span class="orb o1"></span><span class="orb o2"></span><span class="orb o3"></span>
+  </div>
+  <div class="app-shell">
+    <header class="topbar">
+      <div class="container topbar-inner">
+        <div class="brand">
+          <div class="brand-mark" aria-hidden="true">
+            <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+              <path d="M8 9L5 12L8 15" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+              <path d="M16 9L19 12L16 15" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+              <path d="M14 5L10 19" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+            </svg>
+          </div>
+          <div>
+            <h1>CodeSense</h1>
+            <p>Code Quality & Complexity Analyzer</p>
+          </div>
+        </div>
+        <div class="topbar-actions">
+          <button class="icon-btn" id="historyToggleBtn" type="button" title="History">History</button>
+          <button class="icon-btn" id="themeToggleBtn" type="button" title="Toggle theme">Theme</button>
+          <button class="icon-btn btn-primary-solid hidden" id="authOpenBtn" type="button">Login / Sign up</button>
+          <div class="user-menu hidden" id="userMenu">
+            <button class="user-chip" id="userChip" type="button">
+              <span class="avatar" id="userAvatar">U</span>
+              <span class="user-name" id="userName">User</span>
+            </button>
+            <div class="user-dropdown hidden" id="userDropdown">
+              <p><strong id="userNameFull">User</strong></p>
+              <p class="email" id="userEmail">user@example.com</p>
+              <div class="sync-note">Profile history is synced and saved on the server for this account.</div>
+              <button class="btn btn-secondary btn-small" id="logoutBtn" type="button">Logout</button>
+            </div>
+          </div>
+          <span class="status-pill" id="statusPill">Ready</span>
+        </div>
+      </div>
+    </header>
+
+    <main class="container">
+      <section class="hero">
+        <div class="hero-copy">
+          <div class="kicker-row">
+            <span class="kicker">Smart Static Analysis</span>
+            <span class="kicker-badge">Multi-language</span>
+            <span class="kicker-badge">Profile Sync</span>
+          </div>
+          <h2>Write cleaner, safer code with instant insights.</h2>
+          <p>Login or sign up to analyze your code, detect common errors, estimate complexity, and get practical suggestions. Your analysis history is saved permanently in your profile.</p>
+          <div class="hero-tags">
+            <span>Login to analyze</span>
+            <span>Auto language detect</span>
+            <span>Error & quality checks</span>
+            <span>Profile history</span>
+          </div>
+        </div>
+        <div class="hero-card">
+          <div class="hero-stat"><span>4</span><small>Languages</small></div>
+          <div class="hero-stat"><span>Secure</span><small>Login</small></div>
+          <div class="hero-stat"><span>Saved</span><small>Profiles</small></div>
+          <div class="hero-stat"><span>Live</span><small>Analysis</small></div>
+        </div>
+      </section>
+
+      <div id="serverModeNote" class="server-note hidden"></div>
+
+      <div class="workspace">
+        <section class="panel editor-panel">
+          <div class="panel-header">
+            <div>
+              <h3>Editor</h3>
+              <p class="muted">Paste, drop a file, or load a sample. Mismatch? You'll get options before analysis.</p>
+            </div>
+            <div class="header-tools">
+              <label class="file-btn" for="fileInput">Upload File</label>
+              <input id="fileInput" type="file" accept=".js,.jsx,.ts,.tsx,.py,.java,.cpp,.c,.h,.hpp,.txt" hidden>
+            </div>
+          </div>
+
+          <div id="mismatchBanner" class="notice hidden" role="status" aria-live="polite">
+            <div class="notice-icon">!</div>
+            <div class="notice-body">
+              <strong id="mismatchTitle">Language mismatch detected</strong>
+              <p id="mismatchText">Selected language may not match the pasted code.</p>
+            </div>
+            <div class="notice-actions">
+              <button class="btn btn-small btn-primary" id="switchAnalyzeBtn" type="button">Switch &amp; Analyze</button>
+              <button class="btn btn-small btn-secondary" id="keepAnalyzeBtn" type="button">Analyze as selected</button>
+              <button class="btn btn-small btn-ghost" id="dismissNoticeBtn" type="button">Dismiss</button>
+            </div>
+          </div>
+
+          <div class="toolbar">
+            <div class="toolbar-group">
+              <label class="field">
+                <span>Language</span>
+                <select id="languageSelect">
+                  <option value="auto">Auto-detect</option>
+                  <option value="javascript">JavaScript</option>
+                  <option value="python">Python</option>
+                  <option value="java">Java</option>
+                  <option value="cpp">C++</option>
+                </select>
+              </label>
+              <label class="field">
+                <span>Sample</span>
+                <select id="sampleSelect">
+                  <option value="">Load sample...</option>
+                  <option value="clean">Clean example</option>
+                  <option value="issues">Example with issues</option>
+                </select>
+              </label>
+            </div>
+            <div class="toolbar-group actions">
+              <button class="btn btn-ghost" id="trimBtn" type="button" title="Remove trailing whitespace">Trim Spaces</button>
+              <button class="btn btn-secondary" id="clearBtn" type="button">Clear</button>
+              <button class="btn btn-primary" id="analyzeBtn" type="button">Analyze Code</button>
+            </div>
+          </div>
+
+          <div id="dropZone" class="drop-zone">
+            <div class="editor-shell">
+              <div class="editor-chrome">
+                <div class="dots" aria-hidden="true"><span></span><span></span><span></span></div>
+                <div class="editor-title" id="editorTitle">code.txt</div>
+                <div class="editor-detected" id="detectedHint">Detected: —</div>
+              </div>
+              <div class="editor-wrap" id="editorWrap">
+                <div class="line-numbers" id="lineNumbers" aria-hidden="true">1</div>
+                <textarea id="codeInput" spellcheck="false" placeholder="Paste your code here, or drag & drop a file... (Ctrl+Enter to analyze)"></textarea>
+              </div>
+            </div>
+            <div class="drop-overlay" id="dropOverlay">Drop file to load code</div>
+          </div>
+          <div class="editor-meta">
+            <span id="charCount">0 chars</span>
+            <span id="lineCountMeta">1 line</span>
+            <span class="shortcut-hint">Ctrl+Enter to analyze</span>
+          </div>
+        </section>
+
+        <aside class="side-stack">
+          <section class="panel history-panel hidden" id="historyPanel">
+            <div class="panel-header compact">
+              <div>
+                <h3>History</h3>
+                <p class="muted" id="historySubtitle">Recent analyses.</p>
+              </div>
+              <button class="btn btn-small btn-ghost" id="clearHistoryBtn" type="button">Clear</button>
+            </div>
+            <div class="history-mode" id="historyMode"></div>
+            <ul class="history-list" id="historyList"></ul>
+          </section>
+
+          <section class="panel results-panel">
+            <div class="panel-header compact">
+              <div>
+                <h3>Analysis Report</h3>
+                <p class="muted">Overview, issues, metrics, and suggestions.</p>
+              </div>
+              <div class="report-actions hidden" id="reportActions">
+                <button class="icon-btn" id="shareBtn" type="button" title="Copy shareable link">Share</button>
+                <button class="icon-btn" id="copySummaryBtn" type="button" title="Copy summary">Copy</button>
+                <button class="icon-btn" id="exportBtn" type="button" title="Export JSON">JSON</button>
+                <button class="icon-btn" id="exportHtmlBtn" type="button" title="Download HTML report">HTML</button>
+                <button class="icon-btn" id="printBtn" type="button" title="Print report">Print</button>
+              </div>
+            </div>
+
+            <div id="emptyState" class="empty-state">
+              <div class="empty-art" aria-hidden="true"><span>&lt;/&gt;</span></div>
+              <h4>No analysis yet</h4>
+              <p>Login or sign up, then run analysis to view health score, detected issues, complexity metrics, and improvement tips.</p>
+            </div>
+
+            <div id="resultsContent" class="results-content hidden">
+              <div class="analyzed-row">
+                <div class="analyzed-as" id="analyzedAsBadge"></div>
+                <div class="analyzed-time muted" id="analyzedTime"></div>
+              </div>
+
+              <div class="score-card" id="scoreCard">
+                <div class="score-copy">
+                  <p class="eyebrow">Overall Code Health</p>
+                  <h3 id="healthLabel">Good</h3>
+                  <p class="muted" id="healthSummary">Your code looks maintainable with minor improvements possible.</p>
+                  <div class="score-bars">
+                    <div class="bar-row"><span>Health</span><div class="bar"><i id="barHealth"></i></div><b id="barHealthVal">0</b></div>
+                    <div class="bar-row"><span>Maintainability</span><div class="bar"><i id="barMaint"></i></div><b id="barMaintVal">0</b></div>
+                  </div>
+                </div>
+                <div class="score-ring" id="scoreRing" style="--score: 0; --ring-color: #10b981;">
+                  <div class="score-ring-inner">
+                    <span id="healthScore">0</span>
+                    <small>/100</small>
+                  </div>
+                </div>
+              </div>
+
+              <div class="tabs" role="tablist">
+                <button class="tab active" data-tab="overview" type="button">Overview</button>
+                <button class="tab" data-tab="issues" type="button">Issues</button>
+                <button class="tab" data-tab="metrics" type="button">Metrics</button>
+                <button class="tab" data-tab="suggestions" type="button">Suggestions</button>
+              </div>
+
+              <div class="tab-panels">
+                <div class="tab-panel active" id="tab-overview">
+                  <div class="stats-grid">
+                    <div class="stat-card accent"><span class="stat-label">Issues</span><strong class="stat-value" id="statIssues">0</strong><span class="stat-sub" id="statIssuesSub">0 errors, 0 warnings</span></div>
+                    <div class="stat-card"><span class="stat-label">Cyclomatic</span><strong class="stat-value" id="statComplexity">0</strong><span class="stat-sub" id="statComplexitySub">Low risk</span></div>
+                    <div class="stat-card"><span class="stat-label">Lines</span><strong class="stat-value" id="statLoc">0</strong><span class="stat-sub" id="statLocSub">0 non-empty</span></div>
+                    <div class="stat-card"><span class="stat-label">Maintainability</span><strong class="stat-value" id="statMaintainability">0</strong><span class="stat-sub">Readability index</span></div>
+                  </div>
+                  <div class="subpanel">
+                    <div class="subpanel-header"><h4>Top Suggestions</h4></div>
+                    <ul class="suggestion-list compact" id="topSuggestionsList"></ul>
+                  </div>
+                </div>
+
+                <div class="tab-panel" id="tab-issues">
+                  <div class="subpanel">
+                    <div class="subpanel-header row wrap">
+                      <div class="filters">
+                        <button class="chip active" data-filter="all">All <em id="countAll">0</em></button>
+                        <button class="chip" data-filter="error">Errors <em id="countError">0</em></button>
+                        <button class="chip" data-filter="warning">Warnings <em id="countWarn">0</em></button>
+                        <button class="chip" data-filter="info">Info <em id="countInfo">0</em></button>
+                      </div>
+                      <input id="issueSearch" class="search-input" type="text" placeholder="Search issues...">
+                    </div>
+                    <div class="issues-wrap">
+                      <table class="issues-table">
+                        <thead>
+                          <tr><th>Severity</th><th>Line</th><th>Issue</th><th>Suggestion</th></tr>
+                        </thead>
+                        <tbody id="issuesBody"></tbody>
+                      </table>
+                      <div id="noIssues" class="no-issues hidden">No issues found for the selected filter/search.</div>
+                    </div>
+                  </div>
+                </div>
+
+                <div class="tab-panel" id="tab-metrics">
+                  <div class="subpanel">
+                    <div class="subpanel-header"><h4>Complexity & Quality Metrics</h4></div>
+                    <ul class="metric-list" id="complexityMetrics"></ul>
+                  </div>
+                  <div class="subpanel">
+                    <div class="subpanel-header"><h4>Distribution</h4></div>
+                    <div class="dist-grid" id="distGrid"></div>
+                  </div>
+                </div>
+
+                <div class="tab-panel" id="tab-suggestions">
+                  <div class="subpanel">
+                    <div class="subpanel-header"><h4>Improvement Suggestions</h4></div>
+                    <ul class="suggestion-list" id="suggestionsList"></ul>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </section>
+        </aside>
+      </div>
+    </main>
+
+    <footer class="footer container">
+      <p>CodeSense &mdash; Detect common programming errors, estimate complexity, and improve readability &amp; efficiency. Sign in to keep history in your profile.</p>
+    </footer>
+  </div>
+
+  <!-- Auth Modal -->
+  <div class="modal-backdrop hidden" id="authModal" aria-hidden="true">
+    <div class="modal" role="dialog" aria-modal="true" aria-labelledby="authTitle">
+      <div class="modal-header">
+        <h3 id="authTitle">Welcome to CodeSense</h3>
+        <button class="icon-btn" id="authCloseBtn" type="button">Close</button>
+      </div>
+      <p class="modal-sub">Please login to analyze code. New user? Sign up once, then login to continue. Your analysis history will be saved permanently in your profile.</p>
+      <div class="auth-tabs">
+        <button class="auth-tab active" id="tabLogin" type="button">Login</button>
+        <button class="auth-tab" id="tabSignup" type="button">Sign up</button>
+      </div>
+      <p class="auth-hint muted">Already signed up? Use <strong>Login</strong> — no need to sign up again.</p>
+      <div id="authError" class="form-error hidden"></div>
+      <form id="loginForm" class="auth-form">
+        <label class="field"><span>Email</span><input class="text-input" type="email" id="loginEmail" required autocomplete="email"></label>
+        <label class="field"><span>Password</span><input class="text-input" type="password" id="loginPassword" required autocomplete="current-password"></label>
+        <button class="btn btn-primary" type="submit" id="loginSubmitBtn">Login</button>
+      </form>
+      <form id="signupForm" class="auth-form hidden">
+        <label class="field"><span>Name</span><input class="text-input" type="text" id="signupName" required minlength="2" autocomplete="name"></label>
+        <label class="field"><span>Email</span><input class="text-input" type="email" id="signupEmail" required autocomplete="email"></label>
+        <label class="field"><span>Password (min 6 characters)</span><input class="text-input" type="password" id="signupPassword" required minlength="6" autocomplete="new-password"></label>
+        <button class="btn btn-primary" type="submit" id="signupSubmitBtn">Create account</button>
+        <p class="auth-note-inline">Already have an account? Go to <strong>Login</strong> instead of signing up again.</p>
+      </form>
+      <p class="auth-note">Note: Login/profile sync works when running CodeSense with the local server (<code>node server.js</code>).</p>
+    </div>
+  </div>
+
+  <div id="toast" class="toast" aria-live="polite"></div>
+  <script src="js/analyzer.js"></script>
+  <script src="js/app.js"></script>
+</body>
+</html>
