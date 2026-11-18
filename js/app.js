@@ -29,7 +29,8 @@
     language: $("languageSelect"), sample: $("sampleSelect"), code: $("codeInput"), lines: $("lineNumbers"),
     analyze: $("analyzeBtn"), clear: $("clearBtn"), trim: $("trimBtn"),
     charCount: $("charCount"), lineCountMeta: $("lineCountMeta"), status: $("statusPill"),
-    empty: $("emptyState"), results: $("resultsContent"), reportActions: $("reportActions"),
+    empty: $("emptyState"), emptyStateText: $("emptyStateText"), emptyPrimaryBtn: $("emptyPrimaryBtn"),
+    results: $("resultsContent"), reportActions: $("reportActions"),
     healthLabel: $("healthLabel"), healthSummary: $("healthSummary"), healthScore: $("healthScore"), scoreRing: $("scoreRing"),
     barHealth: $("barHealth"), barMaint: $("barMaint"), barHealthVal: $("barHealthVal"), barMaintVal: $("barMaintVal"),
     statIssues: $("statIssues"), statIssuesSub: $("statIssuesSub"), statComplexity: $("statComplexity"),
@@ -47,11 +48,15 @@
     historyMode: $("historyMode"), historySubtitle: $("historySubtitle"),
     issueSearch: $("issueSearch"), countAll: $("countAll"), countError: $("countError"), countWarn: $("countWarn"), countInfo: $("countInfo"),
     distGrid: $("distGrid"), toast: $("toast"), serverModeNote: $("serverModeNote"),
+    helpBtn: $("helpBtn"), helpModal: $("helpModal"), helpCloseBtn: $("helpCloseBtn"),
+    undoBar: $("undoBar"), undoClearBtn: $("undoClearBtn"), dismissUndoBtn: $("dismissUndoBtn"),
     // auth
     authOpenBtn: $("authOpenBtn"), authModal: $("authModal"), authCloseBtn: $("authCloseBtn"),
     tabLogin: $("tabLogin"), tabSignup: $("tabSignup"), loginForm: $("loginForm"), signupForm: $("signupForm"),
     authError: $("authError"), loginEmail: $("loginEmail"), loginPassword: $("loginPassword"), loginSubmitBtn: $("loginSubmitBtn"),
+    loginEmailError: $("loginEmailError"), loginPasswordError: $("loginPasswordError"),
     signupName: $("signupName"), signupEmail: $("signupEmail"), signupPassword: $("signupPassword"), signupSubmitBtn: $("signupSubmitBtn"),
+    signupNameError: $("signupNameError"), signupEmailError: $("signupEmailError"), signupPasswordError: $("signupPasswordError"),
     userMenu: $("userMenu"), userChip: $("userChip"), userDropdown: $("userDropdown"),
     userAvatar: $("userAvatar"), userName: $("userName"), userNameFull: $("userNameFull"), userEmail: $("userEmail"), logoutBtn: $("logoutBtn")
   };
@@ -67,6 +72,8 @@
   let historyItems = [];
   let currentUser = null;
   let authToken = null;
+  let undoSnapshot = null;
+  let undoTimer = null;
 
   const HISTORY_KEY = "codesense_history_v1";
   const THEME_KEY = "codesense_theme_v1";
@@ -200,16 +207,21 @@
   function renderIssues() {
     if (!els.issuesBody) return;
     const filtered = getFilteredIssues();
-    els.issuesBody.innerHTML = filtered.map((issue) => `
-      <tr data-line="${issue.line}">
+    els.issuesBody.innerHTML = filtered.map((issue) => {
+      const fix = issue.suggestion ? `<span class="fix-label">Fix:</span>${escapeHtml(issue.suggestion)}` : "—";
+      return `
+      <tr data-line="${issue.line}" tabindex="0" title="Jump to line ${issue.line}">
         <td><span class="badge ${issue.severity}">${issue.severity}</span></td>
         <td>${issue.line}</td>
         <td>${escapeHtml(issue.message)}</td>
-        <td>${escapeHtml(issue.suggestion)}</td>
-      </tr>`).join("");
+        <td class="issue-fix">${fix}</td>
+      </tr>`;
+    }).join("");
     if (els.noIssues) els.noIssues.classList.toggle("hidden", filtered.length > 0);
     Array.from(els.issuesBody.querySelectorAll("tr[data-line]")).forEach((tr) => {
-      tr.addEventListener("click", () => jumpToLine(Number(tr.getAttribute("data-line"))));
+      const go = () => jumpToLine(Number(tr.getAttribute("data-line")));
+      tr.addEventListener("click", go);
+      tr.addEventListener("keydown", (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); go(); } });
     });
     const e = currentIssues.filter(i => i.severity === "error").length;
     const w = currentIssues.filter(i => i.severity === "warning").length;
@@ -306,6 +318,22 @@
     try { localStorage.setItem(HISTORY_KEY, JSON.stringify((list || []).slice(0, 10))); } catch (_) {}
   }
 
+  function setAnalyzeLoading(loading) {
+    if (!els.analyze) return;
+    if (loading) {
+      if (!els.analyze.dataset.label) els.analyze.dataset.label = els.analyze.textContent || "Analyze Code";
+      els.analyze.disabled = true;
+      els.analyze.classList.add("is-loading");
+      els.analyze.setAttribute("aria-busy", "true");
+      els.analyze.textContent = "Analyzing...";
+    } else {
+      els.analyze.disabled = false;
+      els.analyze.classList.remove("is-loading");
+      els.analyze.removeAttribute("aria-busy");
+      els.analyze.textContent = els.analyze.dataset.label || "Analyze Code";
+    }
+  }
+
   function renderHistory() {
     if (!els.historyList) return;
     const list = historyItems || [];
@@ -332,6 +360,7 @@
         const id = el.getAttribute("data-id");
         const found = list.find(x => x.id === id);
         if (!found) return;
+        undoSnapshot = null; hideUndoBar();
         els.code.value = found.code || "";
         if (found.lang && els.language.querySelector(`option[value="${found.lang}"]`)) els.language.value = found.lang;
         updateEditorMeta();
@@ -387,6 +416,8 @@
   }
 
   async function clearHistory() {
+    const msg = currentUser ? "Clear all saved profile history?" : "Clear local history?";
+    if (!window.confirm(msg)) return;
     if (currentUser && canUseServer) {
       try {
         await api("/api/history", { method: "DELETE" });
@@ -412,19 +443,112 @@
     els.authError.classList.remove("hidden");
   }
 
+  function setFieldError(input, errEl, msg) {
+    if (input) {
+      if (msg) { input.classList.add("invalid"); input.setAttribute("aria-invalid", "true"); }
+      else { input.classList.remove("invalid"); input.removeAttribute("aria-invalid"); }
+    }
+    if (errEl) {
+      if (msg) { errEl.textContent = msg; errEl.classList.remove("hidden"); }
+      else { errEl.textContent = ""; errEl.classList.add("hidden"); }
+    }
+  }
+
+  function isValidEmail(v) { return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v); }
+
+  function validateLogin(showAll) {
+    const email = (els.loginEmail?.value || "").trim();
+    const pass = els.loginPassword?.value || "";
+    let ok = true;
+    let emailMsg = "", passMsg = "";
+    if (!email) { emailMsg = "Email is required."; ok = false; }
+    else if (!isValidEmail(email)) { emailMsg = "Enter a valid email address."; ok = false; }
+    if (!pass) { passMsg = "Password is required."; ok = false; }
+    if (showAll || els.loginEmail?.dataset.touched) setFieldError(els.loginEmail, els.loginEmailError, emailMsg);
+    if (showAll || els.loginPassword?.dataset.touched) setFieldError(els.loginPassword, els.loginPasswordError, passMsg);
+    return ok;
+  }
+
+  function validateSignup(showAll) {
+    const name = (els.signupName?.value || "").trim();
+    const email = (els.signupEmail?.value || "").trim();
+    const pass = els.signupPassword?.value || "";
+    let ok = true;
+    let nameMsg = "", emailMsg = "", passMsg = "";
+    if (!name) { nameMsg = "Name is required."; ok = false; }
+    else if (name.length < 2) { nameMsg = "Name must be at least 2 characters."; ok = false; }
+    if (!email) { emailMsg = "Email is required."; ok = false; }
+    else if (!isValidEmail(email)) { emailMsg = "Enter a valid email address."; ok = false; }
+    if (!pass) { passMsg = "Password is required."; ok = false; }
+    else if (pass.length < 6) { passMsg = "Password must be at least 6 characters."; ok = false; }
+    if (showAll || els.signupName?.dataset.touched) setFieldError(els.signupName, els.signupNameError, nameMsg);
+    if (showAll || els.signupEmail?.dataset.touched) setFieldError(els.signupEmail, els.signupEmailError, emailMsg);
+    if (showAll || els.signupPassword?.dataset.touched) setFieldError(els.signupPassword, els.signupPasswordError, passMsg);
+    return ok;
+  }
+
+  function resetAuthValidation() {
+    const pairs = [
+      [els.loginEmail, els.loginEmailError], [els.loginPassword, els.loginPasswordError],
+      [els.signupName, els.signupNameError], [els.signupEmail, els.signupEmailError], [els.signupPassword, els.signupPasswordError]
+    ];
+    pairs.forEach(([input, err]) => {
+      if (input) delete input.dataset.touched;
+      setFieldError(input, err, "");
+    });
+  }
+
+  let lastFocusBeforeModal = null;
+
+  function getOpenModal() {
+    if (els.helpModal && !els.helpModal.classList.contains("hidden")) return els.helpModal;
+    if (els.authModal && !els.authModal.classList.contains("hidden")) return els.authModal;
+    return null;
+  }
+
+  function getFocusableElements(container) {
+    if (!container) return [];
+    const nodes = Array.from(container.querySelectorAll('a[href], button:not([disabled]), textarea:not([disabled]), input:not([disabled]), select:not([disabled]), [tabindex]:not([tabindex="-1"])'));
+    return nodes.filter(el => !el.closest('.hidden') && (el.offsetParent !== null || el === document.activeElement));
+  }
+
+  function openModal(modal, focusEl) {
+    if (!modal) return;
+    lastFocusBeforeModal = document.activeElement;
+    modal.classList.remove("hidden");
+    modal.setAttribute("aria-hidden", "false");
+    const focusables = getFocusableElements(modal);
+    const target = focusEl || focusables[0] || modal.querySelector('.modal');
+    if (target && typeof target.focus === "function") setTimeout(() => target.focus(), 0);
+  }
+  function closeModal(modal, returnFocusEl) {
+    if (!modal) return;
+    modal.classList.add("hidden");
+    modal.setAttribute("aria-hidden", "true");
+    const target = returnFocusEl || lastFocusBeforeModal;
+    if (target && typeof target.focus === "function" && document.contains(target)) setTimeout(() => target.focus(), 0);
+  }
+
   function openAuthModal(tab) {
     if (!canUseServer) { toast("Run server (node server.js) to use login/profile"); return; }
     if (!els.authModal) return;
-    els.authModal.classList.remove("hidden");
-    els.authModal.setAttribute("aria-hidden", "false");
     setAuthError("");
+    resetAuthValidation();
     switchAuthTab(tab || "login");
+    openModal(els.authModal, tab === "signup" ? els.signupName : els.loginEmail);
   }
   function closeAuthModal() {
     if (!els.authModal) return;
-    els.authModal.classList.add("hidden");
-    els.authModal.setAttribute("aria-hidden", "true");
     setAuthError("");
+    resetAuthValidation();
+    closeModal(els.authModal);
+  }
+
+  function openHelpModal() {
+    openModal(els.helpModal, els.helpCloseBtn);
+  }
+  function closeHelpModal() {
+    closeModal(els.helpModal, els.helpBtn);
   }
   function switchAuthTab(tab) {
     const isLogin = tab === "login";
@@ -433,6 +557,26 @@
     if (els.loginForm) els.loginForm.classList.toggle("hidden", !isLogin);
     if (els.signupForm) els.signupForm.classList.toggle("hidden", isLogin);
     setAuthError("");
+    resetAuthValidation();
+  }
+
+  function updateEmptyStateCTA() {
+    if (!els.emptyPrimaryBtn || !els.emptyStateText) return;
+    if (!canUseServer) {
+      els.emptyStateText.textContent = "Run the local server (node server.js) and open http://localhost:3000, then login or sign up to analyze code.";
+      els.emptyPrimaryBtn.textContent = "How to run";
+      els.emptyPrimaryBtn.classList.remove("hidden");
+      return;
+    }
+    if (!currentUser) {
+      els.emptyStateText.textContent = "Login or sign up, then run analysis to view health score, detected issues, complexity metrics, and improvement tips.";
+      els.emptyPrimaryBtn.textContent = "Login / Sign up";
+      els.emptyPrimaryBtn.classList.remove("hidden");
+    } else {
+      els.emptyStateText.textContent = "Paste code or upload a file, then run analysis to view health score, detected issues, complexity metrics, and improvement tips.";
+      els.emptyPrimaryBtn.textContent = "Analyze Code";
+      els.emptyPrimaryBtn.classList.remove("hidden");
+    }
   }
 
   function updateAuthUI() {
@@ -443,6 +587,7 @@
         els.serverModeNote.textContent = "Login/signup is required before analysis. Run 'node server.js' in the CodeSense folder, then open http://localhost:3000 to login or sign up.";
         els.serverModeNote.classList.remove("hidden");
       }
+      updateEmptyStateCTA();
       return;
     }
     if (els.serverModeNote) els.serverModeNote.classList.add("hidden");
@@ -461,6 +606,7 @@
       if (els.userDropdown) els.userDropdown.classList.add("hidden");
       if (els.historySubtitle) els.historySubtitle.textContent = "Login or sign up to analyze and save history in your profile.";
     }
+    updateEmptyStateCTA();
   }
 
   function handleAuthSuccess(token, user) {
@@ -515,6 +661,7 @@
   // --- Analysis / features ---
   function performAnalysis(lang) {
     const code = els.code.value;
+    setAnalyzeLoading(true);
     setStatus("Analyzing...", "busy");
     window.setTimeout(async () => {
       try {
@@ -534,6 +681,8 @@
         console.error(err);
         setStatus("Analysis failed", "busy");
         toast("Analysis failed");
+      } finally {
+        setAnalyzeLoading(false);
       }
     }, 90);
   }
@@ -591,6 +740,7 @@
   function loadSample() {
     const key = els.sample.value;
     if (!key) return;
+    undoSnapshot = null; hideUndoBar();
     let effectiveLang = els.language.value;
     if (effectiveLang === "auto") {
       effectiveLang = (lastDetection && lastDetection.bestScore >= 3) ? lastDetection.lang : "javascript";
@@ -608,18 +758,78 @@
     setStatus("Sample loaded", "");
   }
 
+  function hideUndoBar() {
+    if (undoTimer) { clearTimeout(undoTimer); undoTimer = null; }
+    if (els.undoBar) els.undoBar.classList.add("hidden");
+  }
+
+  function showUndoBar() {
+    if (!els.undoBar) return;
+    els.undoBar.classList.remove("hidden");
+    if (undoTimer) clearTimeout(undoTimer);
+    undoTimer = setTimeout(() => {
+      undoSnapshot = null;
+      hideUndoBar();
+    }, 12000);
+  }
+
+  function undoClear() {
+    if (!undoSnapshot) return;
+    els.code.value = undoSnapshot.code || "";
+    currentIssues = undoSnapshot.currentIssues || [];
+    lastDetection = undoSnapshot.lastDetection || null;
+    lastReport = undoSnapshot.lastReport || null;
+    lastAnalyzedLang = undoSnapshot.lastAnalyzedLang || null;
+    activeLine = undoSnapshot.activeLine || null;
+    if (undoSnapshot.language && els.language) els.language.value = undoSnapshot.language;
+    updateEditorMeta();
+    updateLanguageChrome();
+    updateDetectionHint(lastDetection, els.language ? els.language.value : "auto");
+    if (lastReport && lastAnalyzedLang) {
+      renderResults(lastReport, lastAnalyzedLang);
+      setStatus(`Analysis restored (${LANG_LABELS[lastAnalyzedLang] || lastAnalyzedLang})`, "ok");
+    } else {
+      if (els.results) els.results.classList.add("hidden");
+      if (els.empty) els.empty.classList.remove("hidden");
+      if (els.reportActions) els.reportActions.classList.add("hidden");
+      if (els.analyzedAsBadge) els.analyzedAsBadge.classList.add("hidden");
+      setStatus(canUseServer && !currentUser ? "Login required to analyze" : "Ready", canUseServer && !currentUser ? "warn" : "");
+    }
+    hideMismatch();
+    undoSnapshot = null;
+    hideUndoBar();
+    toast("Editor restored");
+  }
+
   function clearAll() {
+    const hasContent = (els.code && els.code.value.trim()) || currentIssues.length || lastReport;
+    if (hasContent && !window.confirm("Clear editor and current analysis results?")) return;
+    if (hasContent) {
+      undoSnapshot = {
+        code: els.code ? els.code.value : "",
+        currentIssues: Array.isArray(currentIssues) ? currentIssues.slice() : [],
+        lastDetection,
+        lastReport,
+        lastAnalyzedLang,
+        activeLine,
+        language: els.language ? els.language.value : "auto"
+      };
+    } else {
+      undoSnapshot = null;
+      hideUndoBar();
+    }
     els.code.value = "";
     currentIssues = []; lastDetection = null; lastReport = null; activeLine = null;
     updateEditorMeta();
-    els.results.classList.add("hidden");
-    els.empty.classList.remove("hidden");
+    if (els.results) els.results.classList.add("hidden");
+    if (els.empty) els.empty.classList.remove("hidden");
     if (els.reportActions) els.reportActions.classList.add("hidden");
     if (els.analyzedAsBadge) els.analyzedAsBadge.classList.add("hidden");
     hideMismatch();
     updateDetectionHint(null, els.language.value);
     updateLanguageChrome();
-    setStatus("Ready", "");
+    setStatus(canUseServer && !currentUser ? "Login required to analyze" : "Ready", canUseServer && !currentUser ? "warn" : "");
+    if (undoSnapshot) showUndoBar();
   }
 
   function setActiveTab(name) {
@@ -629,6 +839,7 @@
 
   function loadFile(file) {
     if (!file) return;
+    undoSnapshot = null; hideUndoBar();
     const reader = new FileReader();
     reader.onload = () => {
       els.code.value = String(reader.result || "").slice(0, 300000);
@@ -785,6 +996,8 @@
   }
   if (els.analyze) els.analyze.addEventListener("click", () => runAnalysis());
   if (els.clear) els.clear.addEventListener("click", clearAll);
+  if (els.undoClearBtn) els.undoClearBtn.addEventListener("click", undoClear);
+  if (els.dismissUndoBtn) els.dismissUndoBtn.addEventListener("click", () => { undoSnapshot = null; hideUndoBar(); });
   if (els.trim) els.trim.addEventListener("click", trimTrailingSpaces);
   if (els.sample) els.sample.addEventListener("change", loadSample);
   if (els.language) els.language.addEventListener("change", () => { hideMismatch(); updateDetectionHint(lastDetection, els.language.value); updateLanguageChrome(); setStatus(`Language: ${LANG_LABELS[els.language.value]}`, ""); });
@@ -814,10 +1027,22 @@
   if (els.historyToggleBtn) els.historyToggleBtn.addEventListener("click", () => { if (els.historyPanel) { els.historyPanel.classList.toggle("hidden"); renderHistory(); } });
   if (els.clearHistoryBtn) els.clearHistoryBtn.addEventListener("click", () => { clearHistory(); });
 
-  // Auth events
+  // Auth/help/empty-state events
   if (els.authOpenBtn) els.authOpenBtn.addEventListener("click", () => openAuthModal("login"));
   if (els.authCloseBtn) els.authCloseBtn.addEventListener("click", closeAuthModal);
   if (els.authModal) els.authModal.addEventListener("click", (e) => { if (e.target === els.authModal) closeAuthModal(); });
+  if (els.helpBtn) els.helpBtn.addEventListener("click", openHelpModal);
+  if (els.helpCloseBtn) els.helpCloseBtn.addEventListener("click", closeHelpModal);
+  if (els.helpModal) els.helpModal.addEventListener("click", (e) => { if (e.target === els.helpModal) closeHelpModal(); });
+  if (els.emptyPrimaryBtn) els.emptyPrimaryBtn.addEventListener("click", () => {
+    if (!canUseServer) {
+      toast("Run 'node server.js' in CodeSense folder, then open http://localhost:3000");
+      if (els.serverModeNote) els.serverModeNote.classList.remove("hidden");
+      return;
+    }
+    if (!currentUser) openAuthModal("login");
+    else runAnalysis();
+  });
   if (els.tabLogin) els.tabLogin.addEventListener("click", () => switchAuthTab("login"));
   if (els.tabSignup) els.tabSignup.addEventListener("click", () => switchAuthTab("signup"));
   if (els.userChip) els.userChip.addEventListener("click", () => { if (els.userDropdown) els.userDropdown.classList.toggle("hidden"); });
@@ -825,9 +1050,37 @@
   document.addEventListener("click", (e) => {
     if (els.userMenu && els.userDropdown && !els.userMenu.contains(e.target)) els.userDropdown.classList.add("hidden");
   });
+  document.addEventListener("keydown", (e) => {
+    if (e.key === "Escape") {
+      if (els.helpModal && !els.helpModal.classList.contains("hidden")) closeHelpModal();
+      else if (els.authModal && !els.authModal.classList.contains("hidden")) closeAuthModal();
+      return;
+    }
+    if (e.key === "Tab") {
+      const openModalEl = getOpenModal();
+      if (!openModalEl) return;
+      const focusables = getFocusableElements(openModalEl);
+      if (!focusables.length) { e.preventDefault(); return; }
+      const first = focusables[0];
+      const last = focusables[focusables.length - 1];
+      const active = document.activeElement;
+      if (e.shiftKey) {
+        if (active === first || !openModalEl.contains(active)) { e.preventDefault(); last.focus(); }
+      } else {
+        if (active === last) { e.preventDefault(); first.focus(); }
+      }
+    }
+  });
 
   if (els.loginForm) els.loginForm.addEventListener("submit", async (e) => {
     e.preventDefault(); setAuthError("");
+    if (els.loginEmail) els.loginEmail.dataset.touched = "1";
+    if (els.loginPassword) els.loginPassword.dataset.touched = "1";
+    if (!validateLogin(true)) {
+      const firstInvalid = [els.loginEmail, els.loginPassword].find(el => el && el.classList.contains("invalid"));
+      if (firstInvalid) firstInvalid.focus();
+      return;
+    }
     const email = (els.loginEmail.value || "").trim();
     const password = els.loginPassword.value || "";
     try {
@@ -839,6 +1092,14 @@
   });
   if (els.signupForm) els.signupForm.addEventListener("submit", async (e) => {
     e.preventDefault(); setAuthError("");
+    if (els.signupName) els.signupName.dataset.touched = "1";
+    if (els.signupEmail) els.signupEmail.dataset.touched = "1";
+    if (els.signupPassword) els.signupPassword.dataset.touched = "1";
+    if (!validateSignup(true)) {
+      const firstInvalid = [els.signupName, els.signupEmail, els.signupPassword].find(el => el && el.classList.contains("invalid"));
+      if (firstInvalid) firstInvalid.focus();
+      return;
+    }
     const name = (els.signupName.value || "").trim();
     const email = (els.signupEmail.value || "").trim();
     const password = els.signupPassword.value || "";
@@ -868,6 +1129,14 @@
     finally { if (els.signupSubmitBtn) els.signupSubmitBtn.disabled = false; }
   });
 
+  // Inline auth validation
+  [["loginEmail","loginPassword"], ["signupName","signupEmail","signupPassword"]].flat().forEach((id) => {
+    const el = els[id];
+    if (!el) return;
+    el.addEventListener("blur", () => { el.dataset.touched = "1"; if (id.startsWith("login")) validateLogin(false); else validateSignup(false); });
+    el.addEventListener("input", () => { if (el.dataset.touched) { if (id.startsWith("login")) validateLogin(false); else validateSignup(false); } });
+  });
+
   // Init
   (async function init() {
     let savedTheme = "dark";
@@ -877,6 +1146,7 @@
     await restoreSession();
     await loadHistory();
     updateEditorMeta(); updateLanguageChrome(); updateDetectionHint(lastDetection, els.language ? els.language.value : "auto");
+    updateEmptyStateCTA();
     if (canUseServer && !currentUser) setStatus("Login required to analyze", "warn");
   })();
 })();

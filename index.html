@@ -31,11 +31,12 @@
           </div>
         </div>
         <div class="topbar-actions">
-          <button class="icon-btn" id="historyToggleBtn" type="button" title="History">History</button>
-          <button class="icon-btn" id="themeToggleBtn" type="button" title="Toggle theme">Theme</button>
+          <button class="icon-btn" id="historyToggleBtn" type="button" title="History" aria-label="Toggle history panel">History</button>
+          <button class="icon-btn" id="themeToggleBtn" type="button" title="Toggle theme" aria-label="Toggle theme">Theme</button>
+          <button class="icon-btn" id="helpBtn" type="button" title="Help & legend" aria-label="Open help and legend">Help</button>
           <button class="icon-btn btn-primary-solid hidden" id="authOpenBtn" type="button">Login / Sign up</button>
           <div class="user-menu hidden" id="userMenu">
-            <button class="user-chip" id="userChip" type="button">
+            <button class="user-chip" id="userChip" type="button" aria-label="Open user menu" aria-haspopup="true">
               <span class="avatar" id="userAvatar">U</span>
               <span class="user-name" id="userName">User</span>
             </button>
@@ -46,7 +47,7 @@
               <button class="btn btn-secondary btn-small" id="logoutBtn" type="button">Logout</button>
             </div>
           </div>
-          <span class="status-pill" id="statusPill">Ready</span>
+          <span class="status-pill" id="statusPill" role="status" aria-live="polite">Ready</span>
         </div>
       </div>
     </header>
@@ -127,7 +128,7 @@
             </div>
             <div class="toolbar-group actions">
               <button class="btn btn-ghost" id="trimBtn" type="button" title="Remove trailing whitespace">Trim Spaces</button>
-              <button class="btn btn-secondary" id="clearBtn" type="button">Clear</button>
+              <button class="btn btn-secondary" id="clearBtn" type="button" title="Clear editor and results">Clear</button>
               <button class="btn btn-primary" id="analyzeBtn" type="button">Analyze Code</button>
             </div>
           </div>
@@ -151,6 +152,13 @@
             <span id="lineCountMeta">1 line</span>
             <span class="shortcut-hint">Ctrl+Enter to analyze</span>
           </div>
+          <div id="undoBar" class="undo-bar hidden" role="status" aria-live="polite">
+            <span>Editor cleared.</span>
+            <div class="undo-actions">
+              <button class="btn btn-small btn-secondary" id="undoClearBtn" type="button">Undo</button>
+              <button class="btn btn-small btn-ghost" id="dismissUndoBtn" type="button">Dismiss</button>
+            </div>
+          </div>
         </section>
 
         <aside class="side-stack">
@@ -173,18 +181,21 @@
                 <p class="muted">Overview, issues, metrics, and suggestions.</p>
               </div>
               <div class="report-actions hidden" id="reportActions">
-                <button class="icon-btn" id="shareBtn" type="button" title="Copy shareable link">Share</button>
-                <button class="icon-btn" id="copySummaryBtn" type="button" title="Copy summary">Copy</button>
-                <button class="icon-btn" id="exportBtn" type="button" title="Export JSON">JSON</button>
-                <button class="icon-btn" id="exportHtmlBtn" type="button" title="Download HTML report">HTML</button>
-                <button class="icon-btn" id="printBtn" type="button" title="Print report">Print</button>
+                <button class="icon-btn" id="shareBtn" type="button" title="Copy shareable link" aria-label="Copy shareable link">Share</button>
+                <button class="icon-btn" id="copySummaryBtn" type="button" title="Copy summary" aria-label="Copy summary">Copy</button>
+                <button class="icon-btn" id="exportBtn" type="button" title="Export JSON report" aria-label="Export JSON report">JSON</button>
+                <button class="icon-btn" id="exportHtmlBtn" type="button" title="Download HTML report" aria-label="Download HTML report">HTML</button>
+                <button class="icon-btn" id="printBtn" type="button" title="Print report" aria-label="Print report">Print</button>
               </div>
             </div>
 
             <div id="emptyState" class="empty-state">
               <div class="empty-art" aria-hidden="true"><span>&lt;/&gt;</span></div>
               <h4>No analysis yet</h4>
-              <p>Login or sign up, then run analysis to view health score, detected issues, complexity metrics, and improvement tips.</p>
+              <p id="emptyStateText">Login or sign up, then run analysis to view health score, detected issues, complexity metrics, and improvement tips.</p>
+              <div class="empty-actions">
+                <button class="btn btn-primary" id="emptyPrimaryBtn" type="button">Login / Sign up</button>
+              </div>
             </div>
 
             <div id="resultsContent" class="results-content hidden">
@@ -241,12 +252,13 @@
                         <button class="chip" data-filter="warning">Warnings <em id="countWarn">0</em></button>
                         <button class="chip" data-filter="info">Info <em id="countInfo">0</em></button>
                       </div>
-                      <input id="issueSearch" class="search-input" type="text" placeholder="Search issues...">
+                      <input id="issueSearch" class="search-input" type="text" placeholder="Search issues..." aria-label="Search issues">
                     </div>
+                    <p class="issue-help">Click an issue row to jump to its line. “Recommended fix” suggests how to address it (heuristic guidance).</p>
                     <div class="issues-wrap">
                       <table class="issues-table">
                         <thead>
-                          <tr><th>Severity</th><th>Line</th><th>Issue</th><th>Suggestion</th></tr>
+                          <tr><th>Severity</th><th>Line</th><th>Issue</th><th>Recommended fix</th></tr>
                         </thead>
                         <tbody id="issuesBody"></tbody>
                       </table>
@@ -289,7 +301,7 @@
     <div class="modal" role="dialog" aria-modal="true" aria-labelledby="authTitle">
       <div class="modal-header">
         <h3 id="authTitle">Welcome to CodeSense</h3>
-        <button class="icon-btn" id="authCloseBtn" type="button">Close</button>
+        <button class="icon-btn" id="authCloseBtn" type="button" aria-label="Close login dialog">Close</button>
       </div>
       <p class="modal-sub">Please login to analyze code. New user? Sign up once, then login to continue. Your analysis history will be saved permanently in your profile.</p>
       <div class="auth-tabs">
@@ -298,19 +310,85 @@
       </div>
       <p class="auth-hint muted">Already signed up? Use <strong>Login</strong> — no need to sign up again.</p>
       <div id="authError" class="form-error hidden"></div>
-      <form id="loginForm" class="auth-form">
-        <label class="field"><span>Email</span><input class="text-input" type="email" id="loginEmail" required autocomplete="email"></label>
-        <label class="field"><span>Password</span><input class="text-input" type="password" id="loginPassword" required autocomplete="current-password"></label>
+      <form id="loginForm" class="auth-form" novalidate>
+        <label class="field" for="loginEmail"><span>Email</span>
+          <input class="text-input" type="email" id="loginEmail" required autocomplete="email" aria-describedby="loginEmailHint loginEmailError">
+          <small class="field-hint" id="loginEmailHint">Enter the email you used to sign up.</small>
+          <small class="field-error hidden" id="loginEmailError"></small>
+        </label>
+        <label class="field" for="loginPassword"><span>Password</span>
+          <input class="text-input" type="password" id="loginPassword" required autocomplete="current-password" aria-describedby="loginPasswordHint loginPasswordError">
+          <small class="field-hint" id="loginPasswordHint">Enter your account password.</small>
+          <small class="field-error hidden" id="loginPasswordError"></small>
+        </label>
         <button class="btn btn-primary" type="submit" id="loginSubmitBtn">Login</button>
       </form>
-      <form id="signupForm" class="auth-form hidden">
-        <label class="field"><span>Name</span><input class="text-input" type="text" id="signupName" required minlength="2" autocomplete="name"></label>
-        <label class="field"><span>Email</span><input class="text-input" type="email" id="signupEmail" required autocomplete="email"></label>
-        <label class="field"><span>Password (min 6 characters)</span><input class="text-input" type="password" id="signupPassword" required minlength="6" autocomplete="new-password"></label>
+      <form id="signupForm" class="auth-form hidden" novalidate>
+        <label class="field" for="signupName"><span>Name</span>
+          <input class="text-input" type="text" id="signupName" required minlength="2" autocomplete="name" aria-describedby="signupNameHint signupNameError">
+          <small class="field-hint" id="signupNameHint">Use at least 2 characters.</small>
+          <small class="field-error hidden" id="signupNameError"></small>
+        </label>
+        <label class="field" for="signupEmail"><span>Email</span>
+          <input class="text-input" type="email" id="signupEmail" required autocomplete="email" aria-describedby="signupEmailHint signupEmailError">
+          <small class="field-hint" id="signupEmailHint">We'll use this email for login (one account per email).</small>
+          <small class="field-error hidden" id="signupEmailError"></small>
+        </label>
+        <label class="field" for="signupPassword"><span>Password</span>
+          <input class="text-input" type="password" id="signupPassword" required minlength="6" autocomplete="new-password" aria-describedby="signupPasswordHint signupPasswordError">
+          <small class="field-hint" id="signupPasswordHint">Minimum 6 characters.</small>
+          <small class="field-error hidden" id="signupPasswordError"></small>
+        </label>
         <button class="btn btn-primary" type="submit" id="signupSubmitBtn">Create account</button>
         <p class="auth-note-inline">Already have an account? Go to <strong>Login</strong> instead of signing up again.</p>
       </form>
       <p class="auth-note">Note: Login/profile sync works when running CodeSense with the local server (<code>node server.js</code>).</p>
+    </div>
+  </div>
+
+  <!-- Help Modal -->
+  <div class="modal-backdrop hidden" id="helpModal" aria-hidden="true">
+    <div class="modal modal-wide" role="dialog" aria-modal="true" aria-labelledby="helpTitle">
+      <div class="modal-header">
+        <h3 id="helpTitle">Help &amp; Legend</h3>
+        <button class="icon-btn" id="helpCloseBtn" type="button" aria-label="Close help">Close</button>
+      </div>
+      <p class="modal-sub">Quick guide to using CodeSense, understanding scores, and reading issues.</p>
+      <div class="help-content">
+        <section class="help-section">
+          <h4>How to use</h4>
+          <ul class="help-list">
+            <li><strong>Login required:</strong> Login or sign up before running analysis. New users should sign up once, then login.</li>
+            <li><strong>Analyze:</strong> Paste code or upload/drop a file, choose language (or Auto-detect), then click <em>Analyze Code</em> (Ctrl+Enter).</li>
+            <li><strong>History:</strong> Analyses are saved to your profile (server mode) so you can reopen them later.</li>
+          </ul>
+        </section>
+        <section class="help-section">
+          <h4>Severity legend</h4>
+          <ul class="help-list">
+            <li><span class="badge error">error</span> Likely bug, risky pattern, or issue that should be fixed.</li>
+            <li><span class="badge warning">warning</span> Code smell or potential problem worth reviewing.</li>
+            <li><span class="badge info">info</span> Suggestion or improvement opportunity.</li>
+          </ul>
+        </section>
+        <section class="help-section">
+          <h4>Scores & metrics</h4>
+          <ul class="help-list">
+            <li><strong>Health score (0–100):</strong> Overall code quality signal based on detected issues and complexity.</li>
+            <li><strong>Maintainability:</strong> Readability/maintainability index derived from complexity and code quality signals.</li>
+            <li><strong>Cyclomatic complexity:</strong> Estimate of decision-path complexity (higher usually means harder to test/maintain).</li>
+            <li><strong>Nesting depth:</strong> Maximum nested block depth; deep nesting can reduce readability.</li>
+            <li><strong>Duplication/comment metrics:</strong> Signals for repeated lines and documentation/comment coverage.</li>
+          </ul>
+        </section>
+        <section class="help-section">
+          <h4>Notes</h4>
+          <ul class="help-list">
+            <li>Analysis is <strong>heuristic/rule-based</strong> (not a compiler or ML model), so some issues may be missed or flagged conservatively.</li>
+            <li>When running with <code>node server.js</code>, profile history is stored locally on this machine in <code>CodeSense/data/db.json</code>.</li>
+          </ul>
+        </section>
+      </div>
     </div>
   </div>
 
